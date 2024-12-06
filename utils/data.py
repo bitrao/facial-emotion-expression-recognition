@@ -1,93 +1,72 @@
-import numpy as np
-import pandas as pd
-from PIL import Image
 import torch
+import pandas as pd
+import numpy as np
+from PIL import Image
 import torchvision.transforms as transforms
-from typing import Dict
-import os
 
-class CustomFacialDataset:
-    def __init__(self, csv_file, FAC=False, transform=None):
-        """
-        Args:
-            csv_file (string): Path to the csv file with image paths and emotions
-            FAC (boolean): State whether the dataset is prepared for the FAC classificatio
-            transform (callable, optional): Optional transform to be applied on a sample
-        """
-        self.emotions_frame = pd.read_csv(csv_file)
-        self.transform = transform
-        self.FAC = FAC
-        self.data = pd.read_csv(csv_file)
-
+class EmotionFACsDataset:
+    def __init__(self, csv_path, transform=None, emotion_map=None):
+        self.data = pd.read_csv(csv_path)
+        self.transform = transform or transforms.Compose([
+            transforms.Resize((224, 224)),
+            transforms.ToTensor(),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], 
+                               std=[0.229, 0.224, 0.225])
+        ])
+        
+        # Map emotions to integers
+        self.emotion_map = emotion_map or {
+            'negative': 0, 'positive': 1, 'surprise': 2
+        }
+        
+        # FACs columns are named 'AU1', 'AU2', etc.
+        self.fac_columns = [col for col in self.data.columns if col.startswith('AU')]
+        
     def __len__(self):
         return len(self.data)
-
+    
     def __getitem__(self, idx):
-        # Handle error as loading image
-        try:
-            if torch.is_tensor(idx):
-                idx = idx.tolist()
-            
-            img_path = self.data.iloc[idx, 1]
-            # Load image
-            image = Image.open(img_path).convert('RGB')
-            
-            # Get emotion label
-            labels = self.data['high-level-emotion']
-            
-            # If FAC => get all FAC labels
-            if self.FAC:
-                labels =  torch.FloatTensor(self.data.iloc[idx, 3:].values)
-                    
-            if self.transform:
-                image = self.transform(image)
-                
-            return {
-                'image': image,
-                'labels': labels
-            }
-            
-        except Exception as e:
-            print(f"Error loading image {img_path}: {e}")
-            # Return the data point as tensor of scalar zero
-            return {
-                'image': torch.zeros((3, 224, 224)),
-                'labels': torch.zeros(len(self.data.iloc[0, 3:])) if self.FAC else torch.tensor(0) # Handle singular label
-            }
-            
+        row = self.data.iloc[idx]
+        
+        # Load and transform image
+        image = Image.open(row['image_path']).convert('RGB')
+        image = self.transform(image)
+        
+        # Get emotion label
+        emotion = torch.tensor(self.emotion_map[row['emotion']], dtype=torch.long)
+        
+        # Get FACs labels ( binary values)
+        facs = torch.tensor(row[self.fac_columns].values, dtype=torch.float32)
+        
+        return image, emotion, facs
 
-class CustomLoader:
-    def __init__(self, dataset: CustomFacialDataset, batch_size: int = 32, shuffle: bool = True):
-        """
-        Args:
-            dataset (CustomFacialDataset): Dataset of images and labels
-            batch_size (int): State the size of data batches
-            shuffle (boolean): Optional shuffle the data
-        """
+class DataLoader:
+    def __init__(self, dataset, batch_size=32, shuffle=True):
         self.dataset = dataset
         self.batch_size = batch_size
         self.shuffle = shuffle
-        self.current_idx = 0
-        self.shuffle = shuffle
-        self.indices = np.arange(len(self.data))
-
-    
+        self.indices = list(range(len(dataset)))
+        
     def __iter__(self):
-        self.current_idx = 0
         if self.shuffle:
             np.random.shuffle(self.indices)
-        return self
+        
+        for start_idx in range(0, len(self.dataset), self.batch_size):
+            batch_indices = self.indices[start_idx:start_idx + self.batch_size]
+            
+            batch_images = []
+            batch_emotions = []
+            batch_facs = []
+            
+            for idx in batch_indices:
+                image, emotion, facs = self.dataset[idx]
+                batch_images.append(image)
+                batch_emotions.append(emotion)
+                batch_facs.append(facs)
+            
+            yield (torch.stack(batch_images), 
+                  torch.stack(batch_emotions),
+                  torch.stack(batch_facs))
     
-    def __next__(self) -> Dict[str, torch.Tensor]:
-        if self.current_idx >= len(self.data):
-            raise StopIteration
-
-        batch_indices = self.indices[self.current_idx:self.current_idx + self.batch_size]
-        batch_data = [self.dataset[idx] for idx in batch_indices]
-        
-        self.current_idx += self.batch_size
-        
-        return {
-            'images': torch.stack([item['image'] for item in batch_data]),
-            'labels': torch.stack([item['labels'] for item in batch_data])
-        }
+    def __len__(self):
+        return (len(self.dataset) + self.batch_size - 1) // self.batch_size
