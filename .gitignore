@@ -3,3 +3,5 @@
 
 data/*
 fer_env
+
+__pycache__
