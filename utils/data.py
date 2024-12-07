@@ -3,10 +3,16 @@ import pandas as pd
 import numpy as np
 from PIL import Image
 import torchvision.transforms as transforms
+from sklearn.model_selection import StratifiedShuffleSplit
 
+def split_dataset(csv_path, train_size=0.8, random_state=42):
+    data = pd.read_csv(csv_path)
+    splitter = StratifiedShuffleSplit(n_splits=1, train_size=train_size, random_state=random_state)
+    train_idx, test_idx = next(splitter.split(data, data['high_level_emotion']))
+    return data.iloc[train_idx], data.iloc[test_idx]
 class EmotionFACsDataset:
-    def __init__(self, csv_path, transform=None, emotion_map=None):
-        self.data = pd.read_csv(csv_path)
+    def __init__(self, data_df, transform=None, emotion_map=None):
+        self.data = data_df
         self.transform = transform or transforms.Compose([
             transforms.Resize((224, 224)),
             transforms.ToTensor(),
@@ -29,14 +35,14 @@ class EmotionFACsDataset:
         row = self.data.iloc[idx]
         
         # Load and transform image
-        image = Image.open(row['image_path']).convert('RGB')
+        image = Image.open(f'data/{row['filepath']}').convert('RGB')
         image = self.transform(image)
         
         # Get emotion label
-        emotion = torch.tensor(self.emotion_map[row['emotion']], dtype=torch.long)
+        emotion = torch.tensor(self.emotion_map[row['high_level_emotion']], dtype=torch.long)
         
         # Get FACs labels ( binary values)
-        facs = torch.tensor(row[self.fac_columns].values, dtype=torch.float32)
+        facs = torch.tensor((row[self.fac_columns].values.astype(int)), dtype=torch.float32)
         
         return image, emotion, facs
 
