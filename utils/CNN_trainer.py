@@ -56,12 +56,7 @@ class EmotionFACsTrainer:
         # Different learning rates for different layers
         # Apply AdamW for better generalization
         self.optimizer = optim.AdamW(self.model.parameters(), lr=self.learning_rate, weight_decay=1e-4)
-        
-        # Adjust learning rate
-        self.scheduler = optim.lr_scheduler.ReduceLROnPlateau(
-            self.optimizer, mode='min', factor=0.1, patience=3
-        )
-    
+
     def train_epoch(self):
         self.model.train()
         total_emotion_loss = 0
@@ -108,7 +103,6 @@ class EmotionFACsTrainer:
             'facs_loss': total_facs_loss / len(self.train_loader),
             'emotion_f1': emotion_f1,
             'facs_f1': facs_f1,
-            'total_loss': loss
         }
     
     @torch.no_grad()
@@ -148,12 +142,11 @@ class EmotionFACsTrainer:
             'facs_loss': total_facs_loss / len(self.val_loader),
             'emotion_f1': emotion_f1,
             'facs_f1': facs_f1,
-            'total_loss': loss
         }
     
     def train(self, num_epochs):
         
-        best_loss = float('inf')
+        best_sum_metrics= 0
         best_val_metrics = []
         
         for epoch in range(num_epochs):
@@ -162,7 +155,7 @@ class EmotionFACsTrainer:
             train_metrics = self.train_epoch()
             val_metrics = self.validate()
             
-            val_loss = val_metrics['total_loss']
+            sum_val_metrics = val_metrics['emotion_f1'] + val_metrics['facs_f1']
             
             # Store metrics
             self.history['train_emotion_loss'].append(train_metrics['emotion_loss'])
@@ -184,12 +177,9 @@ class EmotionFACsTrainer:
             print(f"Val - Emotion F1: {val_metrics['emotion_f1']:.4f}, "
                   f"FACS F1: {val_metrics['facs_f1']:.4f}")
             
-            # Update learning rate
-            self.scheduler.step(val_loss)
-            
             # Save best model 
-            if val_loss < best_loss:
-                best_loss = val_loss
+            if sum_val_metrics > best_sum_metrics:
+                best_sum_metrics = sum_val_metrics
                 best_val_metrics = val_metrics
                 self.save_checkpoint(epoch)
                 counter = 0
@@ -198,7 +188,7 @@ class EmotionFACsTrainer:
             
             # Early stopping
             if (self.patience is not None) and (counter >= self.patience):
-                print(f"Early stop at epoch {epoch}")
+                print(f"Early stop at epoch {epoch+1}")
                 print(f"Best Val - Emotion Loss: {best_val_metrics['emotion_loss']:.4f}, "
                     f"Best FACS Loss: {best_val_metrics['facs_loss']:.4f}")
                 print(f"Best Val - Emotion F1: {best_val_metrics['emotion_f1']:.4f}, "
