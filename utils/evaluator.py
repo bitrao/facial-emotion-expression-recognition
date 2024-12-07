@@ -11,7 +11,7 @@ class EmotionFACsEvaluator:
     def __init__(self, model, val_csv_path, batch_size=32, device=None):
         self.model = model
         self.device = device or torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-        self.model.to(device)
+        self.model.to(self.device)
         
         val_df = pd.read_csv(val_csv_path)
         self.val_dataset = EmotionFACsDataset(val_df)
