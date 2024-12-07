@@ -16,9 +16,10 @@ class EmotionFACsNet(nn.Module):
         ):
         super(EmotionFACsNet, self).__init__()
         
+        self.device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
         # Load model from checkpoint
         if checkpoint is not None:
-            checkpoint = torch.load(checkpoint)
+            checkpoint = torch.load(checkpoint, map_location=self.device)
             num_emotions = checkpoint['num_emotions']
             num_facs = checkpoint['num_facs']
             backbone_name = checkpoint['backbone_name']
@@ -111,15 +112,15 @@ class EmotionFACsNet(nn.Module):
         """
         return (facs_values > 0.5).astype(int)
 
-    def predict_image(self, image_path, device='cuda'):
+    def predict_image(self, image_path):
 
         # Load and preprocess image
         image = Image.open(image_path).convert('RGB')
         image_tensor = self.transform(image).unsqueeze(0)
         
         # Move to device
-        self.to(device)
-        image_tensor = image_tensor.to(device)
+        self.to(self.device)
+        image_tensor = image_tensor.to(self.device)
         
         # Set to evaluation mode
         self.eval()

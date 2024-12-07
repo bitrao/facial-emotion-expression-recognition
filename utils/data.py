@@ -32,10 +32,9 @@ class EmotionFACsDataset:
         return len(self.data)
     
     def __getitem__(self, idx):
-        row = self.data.iloc[idx]
-        
+        row = self.data.iloc[idx]        
         # Load and transform image
-        image = Image.open(f'data/{row['filepath']}').convert('RGB')
+        image = Image.open(f'data/{row["filepath"]}').convert('RGB')
         image = self.transform(image)
         
         # Get emotion label
